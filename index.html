@@ -937,6 +937,7 @@
     let isHandlingBackHistory = false;
     let liveRecipientLookupTimer = null;
 
+    const WITHDRAWALS_DB_PATH = 'admin_withdrawals';
     const WHEEL2_PRIZES = [1100, 1075, 1050, 1025, 1125, 1150, 1200, 2000];
     const WHEEL2_COST = 1000;
     const WHEEL2_MAX_SPINS_PER_24H = 5;
@@ -3231,161 +3232,201 @@
         const btn = document.getElementById('confirmAddFriendBtn');
         if(btn) btn.disabled = true;
         rtdb.ref(`friend_requests/${targetKey}/${currentUserKey}`).set({ name: userData.name||'مستخدم', customId: userData.customId||'---', timestamp: Date.now() }).then(()=>{
-            if(res) res.innerHTML="<span style='color:#10b981'>✅ تم إرسال طلب الصداقة بنجاح</span>";
-            const inp = document.getElementById('searchIdInput');
-            if(inp) inp.value = '';
+            if(res) res.innerHTML = `<span style="color:#10b981;">✅ تم إرسال طلب الصداقة إلى (${targetName}) بنجاح.</span>`;
+        }).catch(()=>{
+            if(btn) btn.disabled = false;
+            if(res) res.innerHTML = `<span style="color:#ef4444;">⚠️ تعذر إرسال طلب الصداقة، حاول مجدداً.</span>`;
         });
     }
 
     function loadFriendSystem(){
         if(!currentUserKey||!rtdb)return;
         rtdb.ref(`friend_requests/${currentUserKey}`).on('value',snap=>{
-            let c=document.getElementById('friendRequestsContainer');if(!c)return;
-            if(!snap.exists()){c.innerHTML="لا توجد طلبات صداقة";return;}
-            let h='';snap.forEach(item=>{let d=item.val(),k=item.key;h+=`<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center"><div><b>${d.name}</b> <small style="color:#94a3b8">(${d.customId})</small></div><div style="display:flex;gap:4px"><button onclick="acceptFriendRequest('${k}','${escapeHtmlAttr(d.name)}')" style="background:#10b981;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">قبول ✔</button><button onclick="rejectFriendRequest('${k}')" style="background:#ef4444;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">رفض ✖</button></div></div>`;});
-            c.innerHTML=h;
+            let rc=document.getElementById('friendRequestsContainer');if(!rc)return;
+            if(!snap.exists()){rc.innerHTML="لا توجد طلبات صداقة";return;}
+            let html='';snap.forEach(r=>{let d=r.val();html+=`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.03);padding:6px;border-radius:8px;margin-bottom:4px"><div><b style="color:#fff">${d.name}</b> <small>(ID: ${d.customId})</small></div><div style="display:flex;gap:4px"><button onclick="acceptFriendRequest('${r.key}','${escapeHtmlAttr(d.name)}','${escapeHtmlAttr(d.customId)}')" style="background:#10b981;color:#fff;border:none;padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer">قبول</button><button onclick="rejectFriendRequest('${r.key}')" style="background:#ef4444;color:#fff;border:none;padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer">رفض</button></div></div>`;});
+            rc.innerHTML=html;
         });
+
         rtdb.ref(`friends/${currentUserKey}`).on('value',snap=>{
-            let c=document.getElementById('friendsListContainer');if(!c)return;
-            currentFriendKeys = new Set();
-            if(!snap.exists()){c.innerHTML="لا توجد أصدقاء بعد";return;}
-            let h='';snap.forEach(item=>{
-                let f=item.val(),k=item.key;
-                currentFriendKeys.add(k);
-                h+=`<div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center"><div style="text-align:right"><b class="clickable-user-name" style="color:#fff;font-size:12px" onclick="openVisitedProfileModal('${escapeHtmlAttr(k)}', '${escapeHtmlAttr(f.name)}')">${f.name}</b><div style="font-size:9px;color:#10b981">متاح للدردشة</div></div><div style="display:flex;gap:4px"><button class="action-btn btn-blue" style="width:auto;padding:4px 10px;font-size:10px" onclick="openChatWithFriend('${escapeHtmlAttr(k)}','${escapeHtmlAttr(f.name)}')">💬 محادثة</button><button onclick="deleteFriend('${k}')" style="background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#fca5a5;padding:4px 8px;border-radius:6px;font-size:10px;cursor:pointer" title="حذف الصديق">🗑️</button></div></div>`;
+            let fl=document.getElementById('friendsListContainer');if(!fl)return;
+            currentFriendKeys.clear();
+            if(!snap.exists()){fl.innerHTML="لا توجد أصدقاء مضافين حالياً";return;}
+            let html='';
+            snap.forEach(f=>{
+                let d=f.val();
+                let fKey = f.key;
+                if(!d || !d.name) return;
+                currentFriendKeys.add(fKey);
+                html+=`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.03);padding:8px;border-radius:8px;margin-bottom:6px"><div><b class="clickable-user-name" style="color:#fff" onclick="openVisitedProfileModal('${escapeHtmlAttr(fKey)}', '${escapeHtmlAttr(d.name)}', '${escapeHtmlAttr(d.customId)}')">${d.name}</b> <small style="color:#38bdf8">(ID: ${d.customId})</small></div><button onclick="openChatModal('${escapeHtmlAttr(fKey)}','${escapeHtmlAttr(d.name)}')" style="background:#0ea5e9;color:#fff;border:none;padding:4px 10px;border-radius:8px;font-size:10px;cursor:pointer">💬 مراسلة</button></div>`;
             });
-            c.innerHTML=h;
+            fl.innerHTML = html || "لا توجد أصدقاء مضافين حالياً";
         });
     }
 
-    function acceptFriendRequest(sk,sn){
-        let updates={};updates[`friends/${currentUserKey}/${sk}`]={name:sn};updates[`friends/${sk}/${currentUserKey}`]={name:userData.name||'مستخدم'};
-        rtdb.ref().update(updates).then(()=>{rtdb.ref(`friend_requests/${currentUserKey}/${sk}`).remove();showNeonPopup("✅ تمت إضافة الصديق بنجاح.");});
+    function acceptFriendRequest(sKey,sName,sId){
+        let updates = {};
+        updates[`friends/${currentUserKey}/${sKey}`] = {name:sName,customId:sId};
+        updates[`friends/${sKey}/${currentUserKey}`] = {name:userData.name||'مستخدم',customId:userData.customId||'---'};
+        updates[`friend_requests/${currentUserKey}/${sKey}`] = null;
+        rtdb.ref().update(updates).then(()=>{
+            showNeonPopup("✅ تم قبول طلب الصداقة.");
+        });
     }
-    function rejectFriendRequest(sk){rtdb.ref(`friend_requests/${currentUserKey}/${sk}`).remove();}
-    function deleteFriend(fk){if(!confirm("⚠️ حذف هذا الصديق؟"))return;let updates={};updates[`friends/${currentUserKey}/${fk}`]=null;updates[`friends/${fk}/${currentUserKey}`]=null;rtdb.ref().update(updates).then(()=>showNeonPopup("🗑️ تم الحذف."));loadFriendSystem();}
-    function clearRequestsList(){if(!confirm("⚠️ تنظيف طلبات الصداقة؟"))return;rtdb.ref(`friend_requests/${currentUserKey}`).remove().then(()=>showNeonPopup("🗑️ تم إفراغ طلبات الصداقة."));loadFriendSystem();}
-    function clearFriendsDisplayList(){if(!confirm("⚠️ إخفاء جميع الأصدقاء من العرض الحالي؟"))return;document.getElementById('friendsListContainer').innerHTML="<div style='color:#94a3b8'>تم تنظيف العرض.</div>";}
-    
-    function openChatWithFriend(fk,fn){
-        activeChatFriendKey=fk;activeChatFriendName=fn;document.getElementById('chatTitle').innerText=`الدردشة مع ${fn} 💬`;document.getElementById('chatModal').style.display='flex';
-        let cid=[currentUserKey,fk].sort().join('_');
-        rtdb.ref(`chats/${cid}`).limitToLast(50).on('value',snap=>{
-            let area=document.getElementById('chatMessagesArea');if(!area)return;if(!snap.exists()){area.innerHTML="ابدأ المحادثة الآن...";return;}
-            let h='';snap.forEach(m=>{
-                let msg=m.val(),isMe=(msg.senderKey===currentUserKey);
-                let senderAvatar = isMe ? (userData.avatar || 'https://via.placeholder.com/30') : (msg.senderAvatar || 'https://via.placeholder.com/30');
-                let senderName = msg.senderName || (isMe ? (userData.name || 'أنا') : fn);
-                let senderKey = msg.senderKey || (isMe ? currentUserKey : fk);
-                const nameClickAttr = senderKey
-                    ? `class="clickable-user-name" onclick="openVisitedProfileModal('${escapeHtmlAttr(senderKey)}', '${escapeHtmlAttr(senderName)}')"`
-                    : '';
-                h+=`<div style="margin-bottom:8px;display:flex;align-items:flex-start;gap:6px;text-align:right;"><img src="${senderAvatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid #38bdf8;flex-shrink:0;" alt="صورة"><div style="flex:1;"><div style="font-size:9px;color:${isMe?'#38bdf8':'#34d399'};font-weight:bold;margin-bottom:2px"><span ${nameClickAttr}>${senderName}</span></div><div style="background:rgba(255,255,255,0.05);padding:6px;border-radius:8px;word-break:break-word;color:#fff">${msg.text}</div></div></div>`;
-            });
+    function rejectFriendRequest(sKey){rtdb.ref(`friend_requests/${currentUserKey}/${sKey}`).remove().then(()=>{showNeonPopup("❌ تم رفض الطلب.");});}
+    function clearRequestsList(){if(!currentUserKey||!rtdb||!confirm("⚠️ حذف كافة طلبات الصداقة؟"))return;rtdb.ref(`friend_requests/${currentUserKey}`).remove().then(()=>{document.getElementById('friendRequestsContainer').innerHTML="لا توجد طلبات صداقة";showNeonPopup("🗑️ تم تنظيف القائمة.");});}
+    function clearFriendsDisplayList(){if(confirm("⚠️ إخفاء قائمة الأصدقاء من العرض الحالي فقط؟"))document.getElementById('friendsListContainer').innerHTML="تم إخفاء القائمة، اضغط تحديث لإظهارهم.";}
+
+    function openChatModal(fKey,fName){
+        activeChatFriendKey=fKey;activeChatFriendName=fName;
+        document.getElementById('chatTitle').innerText=`الدردشة مع ${fName} 👤`;
+        document.getElementById('chatModal').style.display='flex';
+        let cid=[currentUserKey,fKey].sort().join('_');
+        rtdb.ref(`chats/${cid}`).limitToLast(40).on('value',snap=>{
+            let area=document.getElementById('chatMessagesArea');if(!area)return;
+            if(!snap.exists()){area.innerHTML="<div style='color:#94a3b8;text-align:center;margin-top:40px'>ابدأ المحادثة بأمان.</div>";return;}
+            let h='';snap.forEach(m=>{let msg=m.val(),isMe=msg.sender===currentUserKey;h+=`<div style="margin-bottom:6px;text-align:${isMe?'left':'right'}"><span style="display:inline-block;max-width:80%;padding:6px 10px;border-radius:10px;background:${isMe?'rgba(14,165,233,0.3)':'rgba(16,185,129,0.2)'};color:#fff;word-break:break-word">${msg.text}</span></div>`;});
             area.innerHTML=h;area.scrollTop=area.scrollHeight;
         });
     }
-    function closeChatModal(){document.getElementById('chatModal').style.display='none';if(activeChatFriendKey){let cid=[currentUserKey,activeChatFriendKey].sort().join('_');rtdb.ref(`chats/${cid}`).off();activeChatFriendKey='';}}
-    function sendChatMessage(){let txt=document.getElementById('chatInputMsg').value.trim();if(!txt||!activeChatFriendKey)return;let cid=[currentUserKey,activeChatFriendKey].sort().join('_');rtdb.ref(`chats/${cid}`).push({senderKey:currentUserKey,senderName:userData.name||'مستخدم',senderAvatar:userData.avatar||'https://via.placeholder.com/30',text:txt,timestamp:Date.now()}).then(()=>{document.getElementById('chatInputMsg').value='';});}
+
+    function closeChatModal(){document.getElementById('chatModal').style.display='none';if(activeChatFriendKey){let cid=[currentUserKey,activeChatFriendKey].sort().join('_');rtdb.ref(`chats/${cid}`).off();}activeChatFriendKey='';}
+    function sendChatMessage(){
+        let inp=document.getElementById('chatInputMsg'),txt=inp.value.trim();if(!txt||!activeChatFriendKey)return;
+        let cid=[currentUserKey,activeChatFriendKey].sort().join('_');
+        rtdb.ref(`chats/${cid}`).push({sender:currentUserKey,senderName:userData.name||'مستخدم',text:txt,timestamp:Date.now()}).then(()=>{
+            inp.value='';
+            rtdb.ref(`notifications/${activeChatFriendKey}`).push({text:`💬 رسالة جديدة من (${userData.name}): "${txt.substring(0,30)}"`,timestamp:Date.now()});
+        });
+    }
 
     function triggerImageUpload(){document.getElementById('hiddenImageInput').click();}
-    function previewImage(e){const f=e.target.files[0];if(!f)return;compressImageToBase64(f, 350, 350, 0.72).then(res=>{base64Image=res;document.getElementById('avatarPreview').src=base64Image;document.getElementById('headerUserAvatar').src=base64Image;});}
-    function validateBioLength(i){document.getElementById('bioCounter').innerText=`${i.value.length} / 60`;}
-    function saveProfileData(){let n=document.getElementById('profileNameInput').value.trim(),b=document.getElementById('profileBioInput').value.trim();if(n)userData.name=n;if(b)userData.bio=b;if(base64Image)userData.avatar=base64Image;saveToDB().then(()=>{updateUI();showNeonPopup("✅ تم حفظ التعديلات بنجاح.");});}
+    function previewImage(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=ev=>{base64Image=ev.target.result;document.getElementById('avatarPreview').src=base64Image;};r.readAsDataURL(f);}
+    function validateBioLength(el){if(el.value.length>60)el.value=el.value.substring(0,60);document.getElementById('bioCounter').innerText=`${el.value.length} / 60`;}
+
+    function saveProfileData(){
+        let n=document.getElementById('profileNameInput').value.trim(),b=document.getElementById('profileBioInput').value.trim();
+        if(!n)return showNeonPopup("⚠️ يرجى إدخال الاسم.");
+        userData.name=n;userData.bio=b;
+        if(base64Image)userData.avatar=base64Image;
+        saveToDB().then(()=>{updateUI();showNeonPopup("✅ تم حفظ التعديلات.");});
+    }
 
     function openWithdrawModal(){
-        if(globalAppSettings.withdrawLocked&&currentEmail!=='msaftwtn@gmail.com') return showNeonPopup('⚠️ خاصية سحب الأرباح متوقفة مؤقتاً من الإدارة.');
+        if(globalAppSettings.withdrawLocked&&currentEmail!=='msaftwtn@gmail.com')return showNeonPopup('⚠️ السحب مغلق مؤقتاً من الإدارة.');
         selectWithdrawMethod('زين كاش (Zain Cash)');
         document.getElementById('withdrawModal').style.display='flex';
     }
     function closeWithdrawModal(){document.getElementById('withdrawModal').style.display='none';}
+
     function submitWithdrawal(){
-        let acc=document.getElementById('withdrawAccount').value.trim(),amt=parseInt(document.getElementById('withdrawAmount').value);
-        if(!acc||isNaN(amt)||amt<=0)return showNeonPopup("⚠️ يرجى إدخال رقم المحفظة أو الحساب وعدد النقاط.");
-        if(amt<MIN_WITHDRAW_POINTS)return showNeonPopup(`⚠️ الحد الأدنى للسحب هو ${MIN_WITHDRAW_POINTS.toLocaleString()} نقطة.`);
-        if(amt>MAX_WITHDRAW_POINTS)return showNeonPopup(`⚠️ الحد الأقصى للسحب هو ${MAX_WITHDRAW_POINTS.toLocaleString()} نقطة.`);
-        if((userData.points||0)<amt)return showNeonPopup("❌ رصيدك غير كافي للسحب.");
-        userData.withdrawCount=(userData.withdrawCount||0)+1;
-        userData.points-=amt;
-        saveToDB().then(()=>{
-            rtdb.ref('withdrawal_requests').push({
-                userKey:currentUserKey,
-                userName:userData.name||'مستخدم',
-                userId:userData.customId||'---',
-                method:selectedWithdrawMethodName,
-                account:acc,
-                amount:amt,
-                withdrawCount:userData.withdrawCount,
-                timestamp:Date.now()
-            }).then(()=>{
-                closeWithdrawModal();
-                updateUI();
-                showNeonPopup("تم طلب سحب الأرباح");
-            }).catch(()=>{
-                showNeonPopup("⚠️ تعذر إرسال طلب السحب، يرجى المحاولة مرة أخرى.");
+        if(globalAppSettings.withdrawLocked&&currentEmail!=='msaftwtn@gmail.com')return showNeonPopup('⚠️ السحب مغلق مؤقتاً من الإدارة.');
+        if(!rtdb||!currentUserKey)return showNeonPopup('❌ خطأ بالاتصال.');
+
+        let acc=document.getElementById('withdrawAccount').value.trim();
+        let pts=parseInt(document.getElementById('withdrawAmount').value);
+        if(!acc||isNaN(pts))return showNeonPopup("⚠️ يرجى إدخال الحساب وعدد النقاط بشكل صحيح.");
+
+        if(pts<MIN_WITHDRAW_POINTS)return showNeonPopup("⚠️ أدنى حد للسحب: 50.000 نقطة.");
+        if(pts>MAX_WITHDRAW_POINTS)return showNeonPopup("⚠️ أعلى حد للسحب: 3M نقطة.");
+
+        let now=new Date().getTime();
+        if(userData.lastWithdrawTime&&(now-userData.lastWithdrawTime)<(3*24*60*60*1000)){
+            let rem=(3*24*60*60*1000)-(now-userData.lastWithdrawTime);
+            let d=Math.floor(rem/(1000*60*60*24)),h=Math.floor((rem%(1000*60*60*24))/(1000*60*60));
+            return showNeonPopup(`⚠️ يمكنك سحب الأرباح مرة واحدة كل 3 أيام فقط. متبقي (${d} يوم و ${h} ساعة).`);
+        }
+
+        if((userData.points||0)<pts)return showNeonPopup("❌ رصيد نقاطك الحالي لا يكفي.");
+
+        const currentWithdrawCount = Number(userData.withdrawCount || 0);
+        const nextWithdrawCount = currentWithdrawCount + 1;
+        const newPointsAfterDeduct = Number(userData.points || 0) - pts;
+
+        rtdb.ref(WITHDRAWALS_DB_PATH).push({
+            userKey: currentUserKey,
+            userName: userData.name || 'مستخدم',
+            customId: userData.customId || '---',
+            account: acc,
+            method: selectedWithdrawMethodName,
+            points: pts,
+            withdrawCount: currentWithdrawCount,
+            timestamp: now
+        }).then(() => {
+            return rtdb.ref(`users/${currentUserKey}`).update({
+                points: newPointsAfterDeduct,
+                lastWithdrawTime: now,
+                withdrawCount: nextWithdrawCount
             });
+        }).then(() => {
+            userData.points = newPointsAfterDeduct;
+            userData.lastWithdrawTime = now;
+            userData.withdrawCount = nextWithdrawCount;
+            updateUI();
+            closeWithdrawModal();
+            document.getElementById('withdrawAccount').value = '';
+            document.getElementById('withdrawAmount').value = '';
+            showNeonPopup("✅ تم طلب سحب الأرباح بنجاح وإرساله للإدارة.");
+        }).catch((err) => {
+            console.error('Error submitting withdrawal:', err);
+            showNeonPopup("❌ تعذر إرسال طلب السحب ولم يتم خصم أي نقاط من رصيدك.");
         });
     }
 
     function openAdminPanelModal(){
-        if(!isAdminAccount()) return showNeonPopup('⚠️ هذه الميزة خاصة بالإدارة فقط.');
+        if(!isAdminAccount())return showNeonPopup("⚠️ هذه اللوحة خاصة بالإدارة فقط.");
         document.getElementById('adminPanelModal').style.display='flex';
-        updateAdminToggleButtons();
+        let tInp=document.getElementById('adminTickerInput');if(tInp&&globalAppSettings.tickerText)tInp.value=globalAppSettings.tickerText;
         loadAdminVerificationRequests();
+        updateAdminControlButtonsUI();
     }
     function closeAdminPanelModal(){document.getElementById('adminPanelModal').style.display='none';}
-    
-    function updateAdminToggleButtons(){
-        let wb=document.getElementById('adminToggleWithdrawBtn'),cb=document.getElementById('adminToggleDailyCounterBtn');
-        if(wb)wb.innerText=globalAppSettings.withdrawLocked?"🔓 فتح سحب الأرباح":"🔒 قفل سحب الأرباح";
-        if(cb)cb.innerText=globalAppSettings.dailyCounterLocked?"▶️ تشغيل العداد اليومي":"⏳ إيقاف العداد اليومي";
+
+    function updateAdminControlButtonsUI(){
+        let wBtn=document.getElementById('adminToggleWithdrawBtn');
+        if(wBtn) wBtn.innerHTML=globalAppSettings.withdrawLocked?"🔓 فتح السحب":"🔒 سحب الأرباح";
+        let dBtn=document.getElementById('adminToggleDailyCounterBtn');
+        if(dBtn) dBtn.innerHTML=globalAppSettings.dailyCounterLocked?"▶️ تشغيل العداد":"⏳ العداد اليومي";
     }
-    function adminToggleWithdrawFeature(){if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');let n=!globalAppSettings.withdrawLocked;rtdb.ref('app_settings').update({withdrawLocked:n}).then(()=>{globalAppSettings.withdrawLocked=n;updateAdminToggleButtons();showNeonPopup(n?"🔒 تم قفل السحب.":"🔓 تم فتح السحب.");});}
-    function adminToggleDailyCounterFeature(){if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');let n=!globalAppSettings.dailyCounterLocked;rtdb.ref('app_settings').update({dailyCounterLocked:n}).then(()=>{globalAppSettings.dailyCounterLocked=n;updateAdminToggleButtons();showNeonPopup(n?"⏳ تم إيقاف العداد.":"▶️ تم تشغيل العداد.");});}
 
     function adminUpdateTicker(){
         if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let txt=document.getElementById('adminTickerInput').value.trim();
-        if(!txt)return showNeonPopup("⚠️ اكتب الإعلان.");
-        rtdb.ref('app_settings').update({tickerText:txt}).then(()=>{
-            globalAppSettings.tickerText=txt;
-            document.getElementById('tickerTextDisplay').innerText=txt;
-            document.getElementById('adminTickerInput').value='';
-            showNeonPopup("📢 تم تحديث شريط الإعلانات بنجاح.");
+        let t=document.getElementById('adminTickerInput').value.trim();if(!t)return showNeonPopup("⚠️ اكتب نص الإعلان.");
+        rtdb.ref('app_settings').update({tickerText:t}).then(()=>{showNeonPopup("✅ تم نشر الإعلان.");});
+    }
+
+    function adminDualChargeAgentBag(){
+        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
+        let tId=document.getElementById('adminDualTargetId').value.trim(),pts=parseInt(document.getElementById('adminDualPointsAmount').value);
+        if(!tId||isNaN(pts)||pts<=0)return showNeonPopup("⚠️ أدخل المعرف (ID) والنقاط.");
+        rtdb.ref('users').orderByChild('customId').equalTo(tId).once('value',snap=>{
+            if(!snap.exists())return showNeonPopup("❌ غير موجود.");
+            let k=Object.keys(snap.val())[0],d=snap.val()[k];
+            let newBag = Number(d.agentBag || 0) + pts;
+            rtdb.ref(`users/${k}`).update({agentBag: newBag}).then(()=>{
+                if(k === currentUserKey) userData.agentBag = newBag;
+                updateUI();
+                rtdb.ref(`notifications/${k}`).push({text:`⚡ أضافت الإدارة (${pts.toLocaleString()} نقطة) لحقيبة الوكيل الخاصة بك.`,timestamp:Date.now()});
+                document.getElementById('adminDualPointsAmount').value='';
+                showNeonPopup("✅ تم شحن الحقيبة بنجاح.");
+            });
         });
     }
 
     function adminDualChargeDirectPoints(){
         if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let tId=document.getElementById('adminDualTargetId').value.trim(),amt=parseInt(document.getElementById('adminDualPointsAmount').value);
-        if(!tId||isNaN(amt)||amt<=0)return showNeonPopup("⚠️ أدخل المعرف (ID) وعدد النقاط.");
+        let tId=document.getElementById('adminDualTargetId').value.trim(),pts=parseInt(document.getElementById('adminDualPointsAmount').value);
+        if(!tId||isNaN(pts)||pts<=0)return showNeonPopup("⚠️ أدخل المعرف (ID) والنقاط.");
         rtdb.ref('users').orderByChild('customId').equalTo(tId).once('value',snap=>{
-            if(!snap.exists())return showNeonPopup("❌ الحساب غير موجود.");
-            let tk=Object.keys(snap.val())[0];let td=snap.val()[tk];
-            let newPts = (td.points||0) + amt;
-            rtdb.ref(`users/${tk}`).update({points:newPts}).then(()=>{
-                if(tk===currentUserKey){ userData.points = newPts; updateUI(); }
-                rtdb.ref(`notifications/${tk}`).push({text:`🪙 تم شحن ${amt.toLocaleString()} نقطة لحسابك من الإدارة.`,timestamp:Date.now()});
-                document.getElementById('adminDualTargetId').value='';document.getElementById('adminDualPointsAmount').value='';
-                showNeonPopup(`✅ تم شحن ${amt.toLocaleString()} نقطة.`);
-            });
-        });
-    }
-
-    function adminDualChargeAgentBag(){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let tId=document.getElementById('adminDualTargetId').value.trim(),amt=parseInt(document.getElementById('adminDualPointsAmount').value);
-        if(!tId||isNaN(amt)||amt<=0)return showNeonPopup("⚠️ أدخل المعرف (ID) وعدد النقاط.");
-        rtdb.ref('users').orderByChild('customId').equalTo(tId).once('value',snap=>{
-            if(!snap.exists())return showNeonPopup("❌ الوكيل غير موجود.");
-            let tk=Object.keys(snap.val())[0];let td=snap.val()[tk];
-            if(!td.isAgent)return showNeonPopup("⚠️ المستخدم ليس وكيلاً معتمداً.");
-            let newBag = (td.agentBag||0) + amt;
-            rtdb.ref(`users/${tk}`).update({agentBag:newBag}).then(()=>{
-                if(tk===currentUserKey){ userData.agentBag = newBag; updateUI(); }
-                rtdb.ref(`notifications/${tk}`).push({text:`🎒 تم شحن ${amt.toLocaleString()} نقطة لحقيبة الوكيل الخاصة بك.`,timestamp:Date.now()});
-                document.getElementById('adminDualTargetId').value='';document.getElementById('adminDualPointsAmount').value='';
-                showNeonPopup(`✅ تم شحن ${amt.toLocaleString()} نقطة لحقيبة الوكيل.`);
+            if(!snap.exists())return showNeonPopup("❌ غير موجود.");
+            let k=Object.keys(snap.val())[0],d=snap.val()[k];
+            let newPts = Number(d.points || 0) + pts;
+            rtdb.ref(`users/${k}`).update({points: newPts}).then(()=>{
+                if(k === currentUserKey) userData.points = newPts;
+                updateUI();
+                rtdb.ref(`notifications/${k}`).push({text:`⚡ شحنت الإدارة (${pts.toLocaleString()} نقطة) بحسابك.`,timestamp:Date.now()});
+                document.getElementById('adminDualPointsAmount').value='';
+                showNeonPopup("✅ تم شحن النقاط بنجاح.");
             });
         });
     }
@@ -3394,231 +3435,145 @@
         if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
         let tId=document.getElementById('adminFreezeTargetId').value.trim();
         if(!tId)return showNeonPopup("⚠️ أدخل المعرف (ID).");
-        if(tId==='1')return showNeonPopup("❌ لا يمكن تجميد حساب الإدارة.");
+        if(tId==='1')return showNeonPopup("❌ لا يمكن تجميد حساب الإدارة الرئيسي (ID: 1).");
         rtdb.ref('users').orderByChild('customId').equalTo(tId).once('value',snap=>{
-            if(!snap.exists())return showNeonPopup("❌ المستخدم غير موجود.");
-            let tk=Object.keys(snap.val())[0];let td=snap.val()[tk];let nf=!td.isBanned;
-            rtdb.ref(`users/${tk}`).update({isBanned:nf}).then(()=>{
-                document.getElementById('adminFreezeTargetId').value='';
-                showNeonPopup(nf?`🚫 تم تجميد الحساب (${td.name}).`:`✅ تم إلغاء التجميد عن الحساب (${td.name}).`);
+            if(!snap.exists())return showNeonPopup("❌ غير موجود.");
+            let k=Object.keys(snap.val())[0],d=snap.val()[k],ns=!d.isBanned;
+            rtdb.ref(`users/${k}`).update({isBanned:ns}).then(()=>{showNeonPopup(ns?`🚫 تم تجميد الحساب (${d.name}).`:`✅ تم إلغاء التجميد عن الحساب (${d.name}).`);});
+        });
+    }
+
+    function adminToggleWithdrawFeature(){
+        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
+        let ns=!globalAppSettings.withdrawLocked;
+        rtdb.ref('app_settings').update({withdrawLocked:ns}).then(()=>{globalAppSettings.withdrawLocked=ns;updateAdminControlButtonsUI();showNeonPopup(ns?"🔒 تم قفل السحب.":"🔓 تم فتح السحب.");});
+    }
+
+    function adminToggleDailyCounterFeature(){
+        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
+        let ns=!globalAppSettings.dailyCounterLocked;
+        rtdb.ref('app_settings').update({dailyCounterLocked:ns}).then(()=>{globalAppSettings.dailyCounterLocked=ns;updateAdminControlButtonsUI();showNeonPopup(ns?"⏸️ تم إيقاف العداد اليومي.":"▶️ تم تشغيل العداد اليومي.");});
+    }
+
+    function openAdminWithdrawalsSection(){
+        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
+        document.getElementById('adminWithdrawalsArea').style.display='block';
+        loadAdminWithdrawals();
+    }
+
+    function loadAdminWithdrawals(){
+        rtdb.ref(WITHDRAWALS_DB_PATH).limitToLast(50).once('value',snap=>{
+            let c=document.getElementById('adminWithdrawalsArea');
+            if(!c)return;
+            if(!snap.exists()){c.innerHTML="لا توجد طلبات سحب معلقة.";return;}
+            let h='';
+            snap.forEach(item=>{
+                let d=item.val();
+                let wCount = Number(d.withdrawCount || 0);
+                h+=`<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;margin-bottom:4px;border:1px solid rgba(255,255,255,0.06)"><div><b>${d.userName}</b> <small>(ID: ${d.customId})</small></div><div style="color:#f59e0b;font-size:10px">الطريقة: ${d.method || 'غير محددة'} | الحساب: ${d.account}</div><div style="color:#10b981;font-weight:bold;margin:2px 0">النقاط: ${Number(d.points||0).toLocaleString()}</div><div style="color:#38bdf8;font-size:10px;margin-bottom:4px">عدد السحوبات السابقة: ${wCount}</div><div style="display:flex;gap:4px"><button onclick="processWithdrawalAdmin('${item.key}','${d.userKey}',${d.points},'approve')" style="flex:1;background:#10b981;color:#fff;border:none;padding:3px;border-radius:4px;font-size:9px;cursor:pointer">موافقة ✔️</button><button onclick="processWithdrawalAdmin('${item.key}','${d.userKey}',${d.points},'reject')" style="flex:1;background:#ef4444;color:#fff;border:none;padding:3px;border-radius:4px;font-size:9px;cursor:pointer">رفض وإرجاع ✖</button></div></div>`;
             });
+            c.innerHTML=h;
+        }, (err) => {
+            let c=document.getElementById('adminWithdrawalsArea');
+            if(c) c.innerHTML = `<div style="color:#ef4444;padding:6px;">❌ تعذر جلب طلبات السحب: ${err && err.message ? err.message : 'خطأ في الصلاحيات'}</div>`;
+        });
+    }
+
+    function processWithdrawalAdmin(wKey,uKey,pts,act){
+        rtdb.ref(`${WITHDRAWALS_DB_PATH}/${wKey}`).remove().then(()=>{
+            if(act==='approve'){
+                rtdb.ref(`notifications/${uKey}`).push({text:`✅ تمت الموافقة على طلب سحب (${Number(pts||0).toLocaleString()} نقطة) وإرسالها لحسابك.`,timestamp:Date.now()});
+                showNeonPopup("✅ تمت الموافقة على السحب.");
+            }else{
+                rtdb.ref(`users/${uKey}`).once('value',s=>{
+                    if(s.exists()){
+                        rtdb.ref(`users/${uKey}`).update({points:Number(s.val().points||0)+Number(pts||0)}).then(()=>{
+                            rtdb.ref(`notifications/${uKey}`).push({text:`❌ تم رفض طلب السحب وإرجاع (${Number(pts||0).toLocaleString()} نقطة) لرصيدك.`,timestamp:Date.now()});
+                            showNeonPopup("❌ تم رفض الطلب وإرجاع النقاط.");
+                        });
+                    }
+                });
+            }
+            loadAdminWithdrawals();
+        });
+    }
+
+    function openAdminAgentApplications(){if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');document.getElementById('adminAgentAppsModal').style.display='flex';loadAdminAgentApps();}
+    function closeAdminAgentApplications(){document.getElementById('adminAgentAppsModal').style.display='none';}
+
+    function loadAdminAgentApps(){
+        rtdb.ref('agent_applications').limitToLast(30).once('value',snap=>{
+            let c=document.getElementById('adminAgentAppsList');
+            if(!c)return;
+            if(!snap.exists()){c.innerHTML="لا توجد طلبات وكالة جديدة.";return;}
+            let h='';
+            snap.forEach(item=>{
+                let d=item.val();
+                h+=`<div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:8px;margin-bottom:6px;border:1px solid rgba(234,179,8,0.25)">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                        <img src="${d.agentAvatar||'https://via.placeholder.com/40'}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid #eab308" alt="وكيل">
+                        <div><b>${d.userName}</b> <small>(ID: ${d.userId})</small><br><small style="color:#facc15">المحافظة: ${d.province||'---'}</small></div>
+                    </div>
+                    <div style="font-size:10px;color:#cbd5e1;margin-bottom:4px">تليجرام: ${d.telegram} | واتساب: ${d.whatsapp}</div>
+                    <div class="agent-docs-grid">
+                        <div class="agent-doc-cell"><div style="font-size:9px;color:#38bdf8;">سكن أمام</div><img src="${d.housingFront||'https://via.placeholder.com/120x80?text=No+Image'}" class="doc-preview-img" alt="سكن أمام"></div>
+                        <div class="agent-doc-cell"><div style="font-size:9px;color:#38bdf8;">سكن خلف</div><img src="${d.housingBack||'https://via.placeholder.com/120x80?text=No+Image'}" class="doc-preview-img" alt="سكن خلف"></div>
+                        <div class="agent-doc-cell"><div style="font-size:9px;color:#38bdf8;">وطنية أمام</div><img src="${d.nationalFront||'https://via.placeholder.com/120x80?text=No+Image'}" class="doc-preview-img" alt="وطنية أمام"></div>
+                        <div class="agent-doc-cell"><div style="font-size:9px;color:#38bdf8;">وطنية خلف</div><img src="${d.nationalBack||'https://via.placeholder.com/120x80?text=No+Image'}" class="doc-preview-img" alt="وطنية خلف"></div>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:8px">
+                        <button onclick="processAgentApp('${item.key}','${d.userKey}','${escapeHtmlAttr(d.telegram)}','${escapeHtmlAttr(d.whatsapp)}','${escapeHtmlAttr(d.province||'العراق')}','${escapeHtmlAttr(d.agentAvatar||'')}','approve')" style="flex:1;background:#10b981;color:#fff;border:none;padding:5px;border-radius:4px;font-size:10px;cursor:pointer">موافقة وتعيين وكيل ✔️</button>
+                        <button onclick="processAgentApp('${item.key}','${d.userKey}','','','','','reject')" style="flex:1;background:#ef4444;color:#fff;border:none;padding:5px;border-radius:4px;font-size:10px;cursor:pointer">رفض ✖</button>
+                    </div>
+                </div>`;
+            });
+            c.innerHTML=h;
+        });
+    }
+
+    function processAgentApp(appKey,uKey,tg,wa,prov,av,act){
+        rtdb.ref(`agent_applications/${appKey}`).remove().then(()=>{
+            if(act==='approve'){
+                rtdb.ref(`users/${uKey}`).update({
+                    isAgent: true, agentTelegram: tg, agentWhatsapp: wa, agentProvince: prov || 'العراق', agentAvatar: av || '', agentBag: 0
+                }).then(()=>{
+                    rtdb.ref(`notifications/${uKey}`).push({text:`🎉 مبروك! تمت الموافقة على طلب الوكالة الخاص بك وأصبحت وكيلاً معتمداً.`,timestamp:Date.now()});
+                    showNeonPopup("✅ تم تعيين الوكيل بنجاح.");
+                });
+            }else{
+                rtdb.ref(`notifications/${uKey}`).push({text:`❌ نعتذر، تم رفض طلب الوكالة الخاص بك.`,timestamp:Date.now()});
+                showNeonPopup("❌ تم رفض الطلب.");
+            }
+            loadAdminAgentApps();
         });
     }
 
     function adminInspectUser(){
         if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let idVal = document.getElementById('adminInspectIdInput').value.trim();
-        let resArea = document.getElementById('adminInspectResult');
-        if(!idVal)return showNeonPopup("⚠️ يرجى إدخال المعرف (ID).");
-        resArea.style.display = 'block'; resArea.innerHTML = "جاري البحث عن بيانات المستخدم...";
-        rtdb.ref('users').orderByChild('customId').equalTo(idVal).once('value',snap=>{
-            if(!snap.exists()){ resArea.innerHTML = "<span style='color:#ef4444'>❌ لم يتم العثور على مستخدم بهذا المعرف.</span>"; return; }
-            let tk=Object.keys(snap.val())[0]; let d=snap.val()[tk];
-            resArea.innerHTML = `<div style='color:#fff;line-height:1.6'>
-                <b>الاسم:</b> ${d.name || '---'}<br>
-                <b>ID:</b> ${d.customId || '---'}<br>
-                <b>البريد الإلكتروني:</b> <span style='color:#38bdf8'>${d.email || '---'}</span><br>
-                <b>كلمة المرور:</b> <span style='color:#facc15'>${d.password || '---'}</span><br>
-                <b>النقاط:</b> <span style='color:#34d399'>${(d.points||0).toLocaleString()}</span><br>
-                <b>الجواهر:</b> <span style='color:#38bdf8'>${(d.gems||0).toLocaleString()}</span><br>
-                <b>حالة الحساب:</b> ${d.isBanned ? '<span style="color:#ef4444">🚫 مجمد</span>' : '<span style="color:#10b981">✅ نشط</span>'}
-            </div>`;
+        let tId=document.getElementById('adminInspectIdInput').value.trim();
+        if(!tId)return showNeonPopup("⚠️ أدخل المعرف (ID).");
+        let res=document.getElementById('adminInspectResult');
+        res.style.display='block';res.innerHTML="جاري البحث...";
+        rtdb.ref('users').orderByChild('customId').equalTo(tId).once('value',snap=>{
+            if(!snap.exists()){res.innerHTML="<span style='color:#ef4444'>❌ غير موجود</span>";return;}
+            let d=Object.values(snap.val())[0];
+            let statusBadge = d.isBanned ? "<span style='color:#ef4444;font-weight:bold'>🚫 مجمد</span>" : "<span style='color:#22c55e;font-weight:bold'>✅ نشط</span>";
+            let agentBadge = d.isAgent ? "نعم 💼" : "لا";
+            res.innerHTML = `<div><b>الاسم:</b> ${d.name||'---'}</div><div><b>الحالة:</b> ${statusBadge}</div><div><b>النقاط:</b> <span style='color:#f59e0b;font-weight:bold'>${Number(d.points||0).toLocaleString()}</span></div><div><b>الجواهر:</b> <span style='color:#38bdf8;font-weight:bold'>${Number(d.gems||0).toLocaleString()}</span></div><div><b>العداد النشط:</b> ${d.activeCounter||'لا يوجد'}</div><div><b>وكيل:</b> ${agentBadge}</div>`;
         });
     }
-
-    function openAdminWithdrawalsSection(){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let area=document.getElementById('adminWithdrawalsArea');
-        if(!area)return;
-        area.style.display='block';
-        loadAdminWithdrawals();
-    }
-
-    function loadAdminWithdrawals(){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        let c=document.getElementById('adminWithdrawalsArea');
-        if(!c)return;
-        c.style.display='block';
-        c.innerHTML="جاري التحميل...";
-
-        if(!rtdb){
-            c.innerHTML="<span style='color:#ef4444'>❌ لا يوجد اتصال بقاعدة البيانات.</span>";
-            return;
-        }
-
-        const renderWithdrawalsSnapshot = (snap) => {
-            if(!snap || !snap.exists()){
-                c.innerHTML="لا توجد طلبات سحب حالياً.";
-                return;
-            }
-            let h='';
-            snap.forEach(item=>{
-                let d=item.val(),k=item.key;
-                if(!d)return;
-                let prevWithdraws = Math.max(0, Number(d.withdrawCount || 1) - 1);
-                let safeUserName = escapeHtmlAttr(d.userName || 'مستخدم');
-                let safeUserId = escapeHtmlAttr(d.userId || '---');
-                let safeMethod = escapeHtmlAttr(d.method || '---');
-                let safeAccount = escapeHtmlAttr(d.account || '---');
-                let amtVal = Number(d.amount || 0);
-
-                h+=`<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(56,189,248,0.28);padding:7px;border-radius:8px;margin-bottom:6px;line-height:1.55;">
-                    <div><b>الاسم:</b> <span style="color:#fff">${safeUserName}</span> <span style="color:#38bdf8">(ID: ${safeUserId})</span></div>
-                    <div><b>الحساب / المحفظة:</b> <span style="color:#38bdf8">${safeAccount}</span></div>
-                    <div><b>طريقة السحب:</b> <span style="color:#f472b6">${safeMethod}</span></div>
-                    <div><b>عدد النقاط المطلوبة:</b> <span style="color:#34d399;font-weight:bold">${amtVal.toLocaleString()} نقطة</span></div>
-                    <div><b>عدد مرات السحب السابقة:</b> <span style="color:#facc15;font-weight:bold">${prevWithdraws}</span></div>
-                    <div style="display:flex;gap:6px;margin-top:6px;">
-                        <button onclick="processWithdrawalAdmin('${k}','${escapeHtmlAttr(d.userKey || '')}',${amtVal},true)" style="flex:1;background:#10b981;color:#fff;border:none;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:bold">موافقة ✔️</button>
-                        <button onclick="processWithdrawalAdmin('${k}','${escapeHtmlAttr(d.userKey || '')}',${amtVal},false)" style="flex:1;background:#ef4444;color:#fff;border:none;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:bold">رفض وإرجاع ✖</button>
-                    </div>
-                </div>`;
-            });
-            c.innerHTML = h || "لا توجد طلبات سحب حالياً.";
-        };
-
-        rtdb.ref('withdrawal_requests').orderByChild('timestamp').limitToLast(50).once('value').then(renderWithdrawalsSnapshot).catch(()=>{
-            rtdb.ref('withdrawal_requests').limitToLast(50).once('value').then(renderWithdrawalsSnapshot).catch(err=>{
-                c.innerHTML=`<span style='color:#ef4444'>❌ تعذر جلب طلبات السحب: ${err && err.message ? err.message : 'خطأ في الصلاحيات أو الاتصال'}</span>`;
-            });
-        });
-    }
-
-    function processWithdrawalAdmin(reqKey,userKey,amt,app){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        const amountNum = Number(amt || 0);
-        const finalizeRequest = () => {
-            rtdb.ref(`withdrawal_requests/${reqKey}`).remove().then(()=>{
-                showNeonPopup(app ? "✅ تمت الموافقة على طلب السحب وتنفيذه." : "❌ تم رفض طلب السحب وإرجاع النقاط للمستخدم.");
-                loadAdminWithdrawals();
-            }).catch(()=>{
-                loadAdminWithdrawals();
-            });
-        };
-
-        if(app){
-            if(userKey){
-                rtdb.ref(`notifications/${userKey}`).push({
-                    text:`✅ تمت الموافقة على طلب سحب (${amountNum.toLocaleString()} نقطة).`,
-                    timestamp:Date.now()
-                }).catch(()=>{});
-            }
-            finalizeRequest();
-        } else {
-            if(!userKey){
-                return finalizeRequest();
-            }
-            rtdb.ref(`users/${userKey}/points`).transaction(p => Number(p || 0) + amountNum, (err, committed, snap) => {
-                if(!err && committed){
-                    if(userKey === currentUserKey && snap){
-                        userData.points = Number(snap.val() || 0);
-                        updateUI();
-                    }
-                    rtdb.ref(`notifications/${userKey}`).push({
-                        text:`⚠️ تم رفض طلب سحب (${amountNum.toLocaleString()} نقطة) وتم إرجاع النقاط إلى رصيدك.`,
-                        timestamp:Date.now()
-                    }).catch(()=>{});
-                }
-                finalizeRequest();
-            });
-        }
-    }
-
-    function openAdminAgentApplications(){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        document.getElementById('adminAgentAppsModal').style.display='flex';
-        rtdb.ref('agent_applications').limitToLast(30).once('value',snap=>{
-            let c=document.getElementById('adminAgentAppsList');if(!c)return;if(!snap.exists()){c.innerHTML="لا توجد طلبات تقديم وكالة.";return;}
-            let h='';snap.forEach(item=>{
-                let d=item.val(),k=item.key;
-                let hFront = d.housingFront || '';
-                let hBack = d.housingBack || '';
-                let nFront = d.nationalFront || '';
-                let nBack = d.nationalBack || '';
-                let avImg = d.agentAvatar || 'https://via.placeholder.com/40';
-                let docsHtml = `<div class="agent-docs-grid">
-                    <div class="agent-doc-cell"><span style="font-size:8px;color:#38bdf8;display:block">بطاقة السكن (أمام):</span>${hFront?`<img src="${hFront}" class="doc-preview-img" alt="سكن أمام">`:'<span style="font-size:8px;color:#94a3b8">غير متوفرة</span>'}</div>
-                    <div class="agent-doc-cell"><span style="font-size:8px;color:#38bdf8;display:block">بطاقة السكن (خلف):</span>${hBack?`<img src="${hBack}" class="doc-preview-img" alt="سكن خلف">`:'<span style="font-size:8px;color:#94a3b8">غير متوفرة</span>'}</div>
-                    <div class="agent-doc-cell"><span style="font-size:8px;color:#34d399;display:block">البطاقة الوطنية (أمام):</span>${nFront?`<img src="${nFront}" class="doc-preview-img" alt="وطنية أمام">`:'<span style="font-size:8px;color:#94a3b8">غير متوفرة</span>'}</div>
-                    <div class="agent-doc-cell"><span style="font-size:8px;color:#34d399;display:block">البطاقة الوطنية (خلف):</span>${nBack?`<img src="${nBack}" class="doc-preview-img" alt="وطنية خلف">`:'<span style="font-size:8px;color:#94a3b8">غير متوفرة</span>'}</div>
-                </div>`;
-
-                h+=`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(234,179,8,0.3);padding:8px;border-radius:10px;margin-bottom:8px;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><img src="${avImg}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid #eab308;" alt="وكيل"><div><b>${d.userName}</b> <small style="color:#94a3b8">(ID: ${d.userId})</small><div style="font-size:10px;color:#38bdf8;">المحافظة: ${d.province}</div></div></div>
-                    <div style="font-size:10px;color:#cbd5e1;">تليجرام: ${d.telegram} | واتساب: ${d.whatsapp}</div>
-                    ${docsHtml}
-                    <div style="display:flex;gap:4px;margin-top:8px"><button onclick="processAgentApplication('${k}','${d.userKey}','${escapeHtmlAttr(d.province||'')}',true)" style="flex:1;background:#10b981;color:#fff;border:none;padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:bold">موافقة وتفعيل الوكالة ✔️</button><button onclick="processAgentApplication('${k}','${d.userKey}','',false)" style="flex:1;background:#ef4444;color:#fff;border:none;padding:5px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:bold">رفض الطلب ✖</button></div>
-                </div>`;
-            });c.innerHTML=h;
-        });
-    }
-    function closeAdminAgentApplications(){document.getElementById('adminAgentAppsModal').style.display='none';}
-
-    function processAgentApplication(appKey,targetUserKey,province,app){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        rtdb.ref(`agent_applications/${appKey}`).once('value',s=>{
-            let d = s.val() || {};
-            if(app){
-                rtdb.ref(`users/${targetUserKey}`).update({
-                    isAgent:true, agentTelegram:d.telegram||'', agentWhatsapp:d.whatsapp||'',
-                    agentProvince:d.province||province||'العراق', agentAvatar:d.agentAvatar||''
-                }).then(()=>{
-                    rtdb.ref(`notifications/${targetUserKey}`).push({text:`🎉 مبروك! تمت الموافقة على طلب وكالتك وأصبحت وكيلاً معتمداً.`,timestamp:Date.now()});
-                    rtdb.ref(`agent_applications/${appKey}`).remove();
-                    showNeonPopup("✅ تم اعتماد الوكيل.");
-                    openAdminAgentApplications();
-                });
-            } else {
-                let refundAmount = Number(d.feePaid || 6000000);
-                rtdb.ref(`users/${targetUserKey}/points`).transaction(p => Number(p || 0) + refundAmount, () => {
-                    rtdb.ref(`notifications/${targetUserKey}`).push({text:`⚠️ نأسف، تم رفض طلب الوكالة وتم إعادة ${refundAmount.toLocaleString()} نقطة لرصيدك.`,timestamp:Date.now()});
-                    rtdb.ref(`agent_applications/${appKey}`).remove();
-                    showNeonPopup("❌ تم رفض الطلب وإعادة رسوم التقديم.");
-                    openAdminAgentApplications();
-                });
-            }
-        });
-    }
-    
-    function openAdminCounterOrders(){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        document.getElementById('adminCounterOrdersModal').style.display='flex';
-        rtdb.ref('counter_orders').limitToLast(30).once('value',snap=>{
-            let c=document.getElementById('adminCounterOrdersList');if(!c)return;if(!snap.exists()){c.innerHTML="لا توجد طلبات حالياً.";return;}
-            let h='';snap.forEach(item=>{
-                let d=item.val(),k=item.key;
-                if(d.type==='deposit_request')h+=`<div style="background:rgba(16,185,129,0.08);border:1px solid #10b981;padding:6px;border-radius:8px;margin-bottom:6px"><b>${d.userName}</b> <small>(ID: ${d.userId})</small><br>إيداع: <b style="color:#34d399">${d.amount.toLocaleString()} نقطة</b><br>المصدر: ${d.source} | المرجع: ${d.refNumber}<div style="display:flex;gap:4px;margin-top:4px"><button onclick="processCounterOrder('${k}','${d.userKey}',0,${d.amount},true,true)" style="flex:1;background:#10b981;color:#fff;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px">تأكيد الشحن ✔️</button><button onclick="processCounterOrder('${k}','${d.userKey}',0,0,false,true)" style="flex:1;background:#ef4444;color:#fff;border:none;padding:3px;border-radius:4px;cursor:pointer;font-size:9px">رفض ✖</button></div></div>`;
-                else h+=`<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center"><div><b>${d.userName}</b> <small>(ID: ${d.userId})</small><br><span style="color:#38bdf8">عداد ${d.counterVal.toLocaleString()} (${d.price.toLocaleString()})</span></div><div style="display:flex;gap:4px"><button onclick="processCounterOrder('${k}','${d.userKey}',${d.counterVal},${d.price},true,false)" style="background:#10b981;color:#fff;border:none;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:9px">تأكيد ✔️</button><button onclick="processCounterOrder('${k}','${d.userKey}',0,0,false,false)" style="background:#ef4444;color:#fff;border:none;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:9px">رفض ✖</button></div></div>`;
-            });c.innerHTML=h;
-        });
-    }
+    function openAdminCounterOrders(){if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');document.getElementById('adminCounterOrdersModal').style.display='flex';loadAdminCounterOrders();}
     function closeAdminCounterOrders(){document.getElementById('adminCounterOrdersModal').style.display='none';}
-
-    function processCounterOrder(orderKey,targetUserKey,cVal,price,app,isDep){
-        if(!isAdminAccount())return showNeonPopup('⚠️ غير مسموح.');
-        if(!app){rtdb.ref(`counter_orders/${orderKey}`).remove().then(()=>{showNeonPopup("❌ تم رفض الطلب.");openAdminCounterOrders();});return;}
-        rtdb.ref(`users/${targetUserKey}`).once('value',s=>{
-            if(!s.exists())return showNeonPopup("❌ الحساب غير موجود.");
-            let td=s.val();
-            if(isDep){
-                let np=(td.points||0)+price;
-                rtdb.ref(`users/${targetUserKey}`).update({points:np}).then(()=>{rtdb.ref(`notifications/${targetUserKey}`).push({text:`🎉 تم تأكيد شحن ${price.toLocaleString()} نقطة لحسابك.`,timestamp:Date.now()});rtdb.ref(`counter_orders/${orderKey}`).remove();showNeonPopup("✅ تم شحن النقاط بنجاح.");openAdminCounterOrders();});
-            } else {
-                if((td.points||0)<price)return showNeonPopup("⚠️ رصيد النقاط لدى المستخدم غير كافي.");
-                let np=(td.points||0)-price;
-                const existingSubs = normalizeCounterSubscriptions(td.counterSubscriptions, td.activeCounterVal, td.lastSpinTime);
-                existingSubs.push({
-                    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                    counterVal: Number(cVal),
-                    daysLeft: COUNTER_DURATION_DAYS,
-                    activatedAt: Date.now(),
-                    lastClaimedAt: 0
-                });
-                const totalCounterVal = existingSubs.reduce((sum, sub) => sum + Number(sub.counterVal || 0), 0);
-                rtdb.ref(`users/${targetUserKey}`).update({points:np,counterSubscriptions:existingSubs,activeCounter:`عداد ${totalCounterVal.toLocaleString()} نقطة يومياً`,activeCounterVal:totalCounterVal}).then(()=>{rtdb.ref(`notifications/${targetUserKey}`).push({text:`🎉 تم تفعيل عداد (${Number(cVal).toLocaleString()} نقطة يومياً) لمدة 365 يوماً.`,timestamp:Date.now()});rtdb.ref(`counter_orders/${orderKey}`).remove();showNeonPopup("✅ تم تفعيل العداد.");openAdminCounterOrders();});
-            }
+    function loadAdminCounterOrders(){
+        rtdb.ref('manual_counter_orders').limitToLast(20).once('value',snap=>{
+            let c=document.getElementById('adminCounterOrdersList');if(!c)return;
+            if(!snap.exists()){c.innerHTML="لا توجد طلبات.";return;}
+            let h='';snap.forEach(item=>{let d=item.val();h+=`<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;margin-bottom:4px"><div><b>${d.userName}</b> <small>(ID: ${d.userId})</small></div><div>المبلغ: <b>${d.amountText}</b> | المحفظة: ${d.walletNumber}</div><div style="display:flex;gap:4px;margin-top:4px"><button onclick="approveManualCounterOrder('${item.key}','${d.userKey}',${d.pointsToAdd},'${escapeHtmlAttr(d.counterLabel)}')" style="flex:1;background:#10b981;color:#fff;border:none;padding:3px;border-radius:4px;font-size:9px;cursor:pointer">موافقة وتفعيل ✔️</button><button onclick="rejectManualCounterOrder('${item.key}','${d.userKey}')" style="flex:1;background:#ef4444;color:#fff;border:none;padding:3px;border-radius:4px;font-size:9px;cursor:pointer">رفض ✖</button></div></div>`;});
+            c.innerHTML=h;
         });
     }
+    function approveManualCounterOrder(orderKey,uKey,pts,lbl){rtdb.ref(`manual_counter_orders/${orderKey}`).remove().then(()=>{rtdb.ref(`users/${uKey}`).once('value',s=>{if(s.exists()){rtdb.ref(`users/${uKey}`).update({points:Number(s.val().points||0)+Number(pts||0),activeCounter:lbl}).then(()=>{rtdb.ref(`notifications/${uKey}`).push({text:`🎉 تمت الموافقة على طلبك وتفعيل (${lbl}).`,timestamp:Date.now()});showNeonPopup("✅ تم تفعيل العداد بنجاح.");});}});loadAdminCounterOrders();});}
+    function rejectManualCounterOrder(orderKey,uKey){rtdb.ref(`manual_counter_orders/${orderKey}`).remove().then(()=>{rtdb.ref(`notifications/${uKey}`).push({text:`❌ تم رفض طلب شراء العداد.`,timestamp:Date.now()});showNeonPopup("❌ تم رفض الطلب.");loadAdminCounterOrders();});}
 </script>
 </body>
 </html>
